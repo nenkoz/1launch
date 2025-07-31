@@ -76,12 +76,31 @@ app.post("/create_order", async (req, res) => {
 
         const orderHash = order.getOrderHash(fromChainId);
         const typedData = order.getTypedData();
-        const orderStruct = order.build();
+
+        console.log("📋 SDK Typed Data:");
+        console.log("🏷️  Domain:", JSON.stringify(typedData.domain, null, 2));
+        console.log("📝 Types:", JSON.stringify(typedData.types, null, 2));
+        console.log("📄 Message:", JSON.stringify(typedData.message, null, 2));
+
+        console.log("✍️  Signing order with SDK's EIP-712 data...");
+
+        // Fix the domain to include chainId (SDK omits it but ethers needs it)
+        const fixedDomain = {
+            ...typedData.domain,
+            chainId: CHAIN_ID,
+        };
+
+        // Extract only the Order types (ethers.js doesn't want EIP712Domain)
+        const orderTypes = {
+            Order: typedData.types.Order,
+        };
+
+        console.log("🔧 Fixed Domain:", JSON.stringify(fixedDomain, null, 2));
+        console.log("🔧 Order Types:", JSON.stringify(orderTypes, null, 2));
 
         res.json({
             orderHash,
-            typedData,
-            orderStruct,
+            order,
             nonce: nonce.toString(),
             expiration: expiration.toString(),
             maker: userWallet,
@@ -95,10 +114,10 @@ app.post("/create_order", async (req, res) => {
 app.post("/finalize_order", async (req, res) => {
     try {
         // Expect body to provide these fields directly
-        const { orderHash, typedData, orderStruct, nonce, expiration, maker } = req.body;
+        const { orderHash, order, nonce, expiration, maker } = req.body;
 
         // Validate required fields
-        if (!orderHash || !typedData || !nonce || !expiration || !maker) {
+        if (!order || !typedData || !nonce || !expiration || !maker) {
             return res.status(400).json({ error: "Missing required fields: takerAsset, quantity, price, userWallet" });
         }
 
@@ -109,17 +128,52 @@ app.post("/finalize_order", async (req, res) => {
         });
         console.log("✅ SDK v5.x initialized successfully");
 
-        const fixedDomain = {
-            ...typedData.domain,
-            chainId: CHAIN_ID,
+        // Get extension data separately
+        const extensionObj = order.extension;
+        let extensionData = "0x";
+
+        if (extensionObj && typeof extensionObj.encode === "function") {
+            extensionData = extensionObj.encode();
+        } else if (extensionObj && typeof extensionObj.toString === "function") {
+            extensionData = extensionObj.toString();
+        }
+
+        console.log("🔍 Extension data:", extensionData);
+
+        const orderStruct = order.build();
+
+        // Format makerTraits as hex string (per working example)
+        const makerTraitsHex = "0x" + BigInt(orderStruct.makerTraits).toString(16).padStart(64, "0");
+
+        // Build final API payload following 1inch format and working example structure
+        const orderData = {
+            orderHash: orderHash,
+            signature: signature,
+            data: {
+                makerAsset: orderStruct.makerAsset.toLowerCase(),
+                takerAsset: orderStruct.takerAsset.toLowerCase(),
+                salt: orderStruct.salt.toString(),
+                receiver: orderStruct.receiver.toLowerCase(),
+                makingAmount: orderStruct.makingAmount.toString(),
+                takingAmount: orderStruct.takingAmount.toString(),
+                maker: orderStruct.maker.toLowerCase(),
+                extension: extensionData,
+                makerTraits: makerTraitsHex,
+            },
         };
+
+        console.log("\n📋 Complete Order Data for HTTP Testing:");
+        console.log(JSON.stringify(orderData, null, 2));
+
+        try {
+            await sdk.submitOrder(order, signature);
+        } catch (err) {
+            console.error(err.message);
+        }
 
         res.json({
             orderHash,
             typedData,
-            orderStruct,
-            nonce: nonce.toString(),
-            expiration: expiration.toString(),
             maker: userWallet,
         });
     } catch (error) {
