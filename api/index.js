@@ -95,17 +95,12 @@ app.post("/create_order", async (req, res) => {
 app.post("/finalize_order", async (req, res) => {
     try {
         // Expect body to provide these fields directly
-        const { takerAsset, quantity, price, userWallet } = req.body;
-
-        const fromChainId = process.env.VITE_CHAIN_ID;
+        const { orderHash, typedData, orderStruct, nonce, expiration, maker } = req.body;
 
         // Validate required fields
-        if (!takerAsset || !quantity || !price || !userWallet) {
+        if (!orderHash || !typedData || !nonce || !expiration || !maker) {
             return res.status(400).json({ error: "Missing required fields: takerAsset, quantity, price, userWallet" });
         }
-
-        const MAKER_ASSET = CONTRACTS.USDC; // USDC address on ARB
-        const TAKER_ASSET = takerAsset; // e.g., project token
 
         const sdk = new Sdk({
             authKey: API_KEY,
@@ -114,32 +109,10 @@ app.post("/finalize_order", async (req, res) => {
         });
         console.log("✅ SDK v5.x initialized successfully");
 
-        // Calculate amounts (assuming 18 decimals for tokens, 6 for USDC)
-        const makingAmountBigInt = BigInt(Math.floor(price * quantity * 1e6));
-        const takingAmountBigInt = BigInt(Math.floor(quantity * 1e18));
-
-        const expiresIn = 3600n;
-        const expiration = BigInt(Math.floor(Date.now() / 1000)) + expiresIn;
-        const UINT_40_MAX = (1n << 40n) - 1n;
-        const nonce = randBigInt(UINT_40_MAX);
-
-        const makerTraits = MakerTraits.default().withExpiration(expiration).withNonce(nonce).allowPartialFills().allowMultipleFills();
-
-        const order = await sdk.createOrder(
-            {
-                makerAsset: new Address(MAKER_ASSET),
-                takerAsset: new Address(TAKER_ASSET),
-                makingAmount: makingAmountBigInt,
-                takingAmount: takingAmountBigInt,
-                maker: new Address(userWallet),
-                receiver: new Address(userWallet),
-            },
-            makerTraits
-        );
-
-        const orderHash = order.getOrderHash(fromChainId);
-        const typedData = order.getTypedData();
-        const orderStruct = order.build();
+        const fixedDomain = {
+            ...typedData.domain,
+            chainId: CHAIN_ID,
+        };
 
         res.json({
             orderHash,
