@@ -1,0 +1,65 @@
+
+@1inch_base_url = https://api.1inch.dev
+@ONE_INCH_API_KEY = nkhoswAuNTpu4DGJ2OmxTxI7x4dLRMMM
+ # Arbitrum One (Goerli)
+@CHAIN_ID = 42161
+
+
+### Get all 1inch limit orders
+GET {{1inch_base_url}}/orderbook/v4.0/{{CHAIN_ID}}/all?page=1&limit=100&statuses=1%2C2%2C3&takerAsset=0x48EFEe14FDAc70b0436677C0f5F1F00B3C4dbeE4
+Authorization: Bearer {{ONE_INCH_API_KEY}}
+Content-Type: application/json
+
+### Get 1inch all orders(filter)
+GET {{1inch_base_url}}/orderbook/v4.0/{{CHAIN_ID}}/all?page=1&limit=10&statuses=1%2C2%2C3&takerAsset=0x82af49447d8a07e3bd95bd0d56f35241523fbab1&makerAsset=0xaf88d065e77c8cC2239327C5EDb3A432268e5831
+Authorization: Bearer {{ONE_INCH_API_KEY}}
+Content-Type: application/json
+
+### Get 1inch order status
+@orderHash = 0x0446aeb0ce4033798513ca73c8216da3c079cc71ed2cdbdc156b54a7773746c4
+GET {{1inch_base_url}}/orderbook/v4.0/{{CHAIN_ID}}/order/{{orderHash}}
+Authorization: Bearer {{ONE_INCH_API_KEY}}
+Content-Type: application/json
+
+### create_bid_order
+POST {{1inch_base_url}}/orderbook/v4.0/{{CHAIN_ID}}
+Authorization: Bearer {{ONE_INCH_API_KEY}}
+Content-Type: application/json
+
+{
+  "orderHash": "0x8138826473cabcc37517ee1ba6874a554ac240448c38626c8a4689b2a0c0e9c9",
+  "signature": "0xe217bf7edca92e933a6e8746088e79f10e958f03811f1fdd70d941e0df22b9b23b873da890436d436fcae4a1a301bd23db1abf79b6eae2e3b582aeb26dd473561c",
+  "data": {
+    "makerAsset": "0xaf88d065e77c8cc2239327c5edb3a432268e5831",
+    "takerAsset": "0x48efee14fdac70b0436677c0f5f1f00b3c4dbee4",
+    "salt": "101192113876987644006058177562194094986019516725883811675748936885323941423847",
+    "receiver": "0xc0dfdb9e7a392c3dbbe7c6fbe8fbc1789c9fe05e",
+    "makingAmount": "100000",
+    "takingAmount": "27777777777777778688",
+    "maker": "0x2c31f55a6a36537a5aec50be3bf6986b5c5d7dcc",
+    "extension": "0x000000ac0000004a0000004a0000004a0000004a000000250000000000000000c0dfdb9e7a392c3dbbe7c6fbe8fbc1789c9fe05e00000001f43201555d67e125f8769284bac0dfdb9e7a392c3dbbe7c6fbe8fbc1789c9fe05e00000001f43201555d67e125f8769284bac0dfdb9e7a392c3dbbe7c6fbe8fbc1789c9fe05e01000000000000000000000000000000000000000090cbe4bdd538d6e9b379bff5fe72c3d67a521de5c0dfdb9e7a392c3dbbe7c6fbe8fbc1789c9fe05e00000001f43201555d67e125f8769284ba",
+    "makerTraits": "0x4a00000000000000000000008ca5cc41b4006889d52200000000000000000000"
+  }
+}
+
+### create_order
+POST http://localhost:4999/create_order
+Content-Type: application/json
+
+{
+  "walletAddress": "0x2C31f55A6a36537a5AeC50Be3bF6986B5c5D7dCC",
+  "quantity":"1",
+  "price":"100000",
+  "makerAsset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+  "takerAsset": "0x48efee14fdac70b0436677c0f5f1f00b3c4dbee4",
+  "receiver": "0xc0dfdb9e7a392c3dbbe7c6fbe8fbc1789c9fe05e",
+}
+
+### finalize_order
+POST http://localhost:4999/finalize_order
+Content-Type: application/json
+
+{
+  "launchId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f",
+  "auctionEndTime": 1721932800000
+}

@@ -1,0 +1,48 @@
+# @base_url = https://mhwkcmvhgbdkrhtkfnxb.supabase.co/functions/v1/one-inch-integration
+# prod key
+# @API_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1od2tjbXZoZ2Jka3JodGtmbnhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTI4NDEzNjQsImV4cCI6MjA2ODQxNzM2NH0.emY7lXDvCQE5h8CecaeUkOb3vfbdGzccB5NZsrMT7ww
+
+@base_url = http://localhost:54321/functions/v1/one-inch-integration
+@API_KEY = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+
+### init func
+POST {{base_url}}
+Authorization: Bearer {{API_KEY}}
+Content-Type: application/json
+
+{"name":"Functions"}
+
+### sync_order_status
+POST {{base_url}}
+Authorization: Bearer {{API_KEY}}
+Content-Type: application/json
+
+{
+    "action": "sync_order_status",
+    "orderHash": "0x0446aeb0ce4033798513ca73c8216da3c079cc71ed2cdbdc156b54a7773746c4"
+}
+
+### create_bid_order
+POST {{base_url}}
+Authorization: Bearer {{API_KEY}}
+Content-Type: application/json
+
+{
+    "action": "create_bid_order",
+    "launchId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f",
+    "tokenAddress": "0x45d9831d8751b2325f3dbf48db748723726e1c8c",
+    "price": 2.15,
+    "quantity": 100,
+    "userWallet": "0x91962f8404692dff6898624831d332793036485c",
+    "auctionEndTime": 1721932800000
+}
+
+### settle_auction
+POST {{base_url}}
+Authorization: Bearer {{API_KEY}}
+Content-Type: application/json
+
+{
+    "action": "settle_auction",
+    "launchId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f"
+}
