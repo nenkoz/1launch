@@ -311,7 +311,7 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
                 domain,
                 types: Object.keys(types),
                 userWallet: address,
-                orderMaker: typedDataMessage.maker
+                orderMaker: typedDataMessage.maker,
             });
 
             // Verify the order maker matches the user's wallet
@@ -324,7 +324,7 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
             const typedDataSignature = await signTypedDataAsync({
                 domain: domain,
                 types: types,
-                primaryType: 'Order',
+                primaryType: "Order",
                 message: typedDataMessage,
                 account: address as `0x${string}`,
             });
@@ -332,9 +332,9 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
             console.log("✅ Typed data signature received:", typedDataSignature.substring(0, 20) + "...");
             console.log("🔍 Signature details:", {
                 length: typedDataSignature.length,
-                startsWith0x: typedDataSignature.startsWith('0x'),
+                startsWith0x: typedDataSignature.startsWith("0x"),
                 walletAddress: address,
-                orderMaker: typedDataMessage.maker
+                orderMaker: typedDataMessage.maker,
             });
 
             // 2. User signs order hash with wallet (trigger wallet popup)
@@ -476,19 +476,17 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
 
     const settleAuction = async (launchId: string) => {
         try {
-            const { data, error } = await supabase.functions.invoke("one-inch-integration", {
-                body: {
-                    action: "settle_auction",
-                    launchId,
+            const resp = await fetch(`${BACKEND_API_BASE_URL}/settle_auction`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
                 },
+                body: JSON.stringify({ launchId }),
             });
-
-            if (error) {
-                throw error;
-            }
-
-            if (!data.success) {
-                throw new Error(data.error || "Failed to settle auction");
+            const result = await resp.json();
+            console.log("Settle auction result:", result);
+            if (!resp.ok) {
+                throw new Error(result.error || "Failed to settle auction");
             }
 
             // Reload the complete launch data including bids from database
@@ -496,14 +494,14 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
 
             toast({
                 title: "Auction Settled",
-                description: `Clearing price: $${data.clearingPrice.toFixed(4)}`,
+                description: `Clearing price: $${result.clearingPrice.toFixed(4)}`,
             });
 
             console.log("Auction settled successfully:", {
                 launchId,
-                clearingPrice: data.clearingPrice,
-                filledQuantity: data.filledQuantity,
-                successfulBids: data.successfulBids,
+                clearingPrice: result.clearingPrice,
+                filledQuantity: result.filledQuantity,
+                successfulBids: result.successfulBids,
             });
         } catch (error) {
             console.error("Error settling auction:", error);
