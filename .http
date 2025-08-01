@@ -63,3 +63,19 @@ Content-Type: application/json
   "launchId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f",
   "auctionEndTime": 1721932800000
 }
+
+### sync_order_status
+POST http://localhost:4999/sync_order_status
+Content-Type: application/json
+
+{
+    "orderHash": "0x0446aeb0ce4033798513ca73c8216da3c079cc71ed2cdbdc156b54a7773746c4"
+}
+
+### settle_auction
+POST http://localhost:4999/settle_auction
+Content-Type: application/json
+
+{
+    "launchId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f"
+}
