@@ -23,7 +23,11 @@ const submitOrder = async (orderHash, orderData, extension, signature) => {
         },
     };
     console.log("📤 Submitting to 1inch API:", JSON.stringify(reqObj, null, 2));
-    await new FetchProviderConnector().post(`${ONE_INCH_BASE_URL}/${CHAIN_ID}`, reqObj, { Authorization: `Bearer ${ONE_INCH_API_KEY}` });
+    const response = await new FetchProviderConnector().post(`${ONE_INCH_BASE_URL}/${CHAIN_ID}`, reqObj, { Authorization: `Bearer ${ONE_INCH_API_KEY}` });
+    const resultString= await response.text();
+    console.log("🔍 Response:", resultString);
+    const result = JSON.parse(resultString);
+    return result;
 };
  
  const getOrderStatus = async (orderHash) => {
