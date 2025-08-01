@@ -13,6 +13,11 @@ const CONTRACTS = {
 const app = express();
 const PORT = process.env.PORT || 4999;
 
+const fromChainId = process.env.VITE_CHAIN_ID;
+if (!fromChainId) {
+    console.error("VITE_CHAIN_ID not found. Please set it in your ../.env.local file.");
+    process.exit(1);
+}
 const API_KEY = process.env.VITE_ONE_INCH_API_KEY || "";
 if (!API_KEY) {
     console.error("One Inch API key not found. Please set it in your ../.env.local file.");
@@ -34,8 +39,6 @@ app.post("/create_order", async (req, res) => {
         // Expect body to provide these fields directly
         const { launchId, auctionEndTime, takerAsset, quantity, price, userWallet } = req.body;
 
-        const fromChainId = process.env.VITE_CHAIN_ID;
-
         // Validate required fields
         if (!launchId || !auctionEndTime || !takerAsset || !quantity || !price || !userWallet) {
             return res.status(400).json({ error: "Missing required fields: takerAsset, quantity, price, userWallet" });
@@ -49,7 +52,7 @@ app.post("/create_order", async (req, res) => {
             networkId: fromChainId,
             httpConnector: new FetchProviderConnector(),
         });
-        console.log("✅ SDK v5.x initialized successfully");
+        console.log("/create_order: ✅ SDK v5.x initialized successfully");
 
         // Calculate amounts (assuming 18 decimals for tokens, 6 for USDC)
         const makingAmountBigInt = BigInt(Math.floor(price * quantity * 1e6));
@@ -77,17 +80,17 @@ app.post("/create_order", async (req, res) => {
         const orderHash = order.getOrderHash(fromChainId);
         const typedData = order.getTypedData();
 
-        console.log("📋 SDK Typed Data:");
-        console.log("🏷️  Domain:", JSON.stringify(typedData.domain, null, 2));
-        console.log("📝 Types:", JSON.stringify(typedData.types, null, 2));
-        console.log("📄 Message:", JSON.stringify(typedData.message, null, 2));
+        // console.log("📋 SDK Typed Data:");
+        // console.log("🏷️  Domain:", JSON.stringify(typedData.domain, null, 2));
+        // console.log("📝 Types:", JSON.stringify(typedData.types, null, 2));
+        // console.log("📄 Message:", JSON.stringify(typedData.message, null, 2));
 
         console.log("✍️  Signing order with SDK's EIP-712 data...");
 
         // Fix the domain to include chainId (SDK omits it but ethers needs it)
         const fixedDomain = {
             ...typedData.domain,
-            chainId: CHAIN_ID,
+            chainId: fromChainId,
         };
 
         // Extract only the Order types (ethers.js doesn't want EIP712Domain)
@@ -95,15 +98,17 @@ app.post("/create_order", async (req, res) => {
             Order: typedData.types.Order,
         };
 
-        console.log("🔧 Fixed Domain:", JSON.stringify(fixedDomain, null, 2));
-        console.log("🔧 Order Types:", JSON.stringify(orderTypes, null, 2));
+        // console.log("🔧 Fixed Domain:", JSON.stringify(fixedDomain, null, 2));
+        // console.log("🔧 Order Types:", JSON.stringify(orderTypes, null, 2));
+
+        const orderData = order.build();
 
         res.json({
             orderHash,
-            order,
+            orderData,
+            extensionObject: order.extension,
             nonce: nonce.toString(),
             expiration: expiration.toString(),
-            maker: userWallet,
         });
     } catch (error) {
         console.error(error);
@@ -114,11 +119,11 @@ app.post("/create_order", async (req, res) => {
 app.post("/finalize_order", async (req, res) => {
     try {
         // Expect body to provide these fields directly
-        const { orderHash, order, nonce, expiration, maker } = req.body;
+        const { orderHash, orderData, extensionObject, nonce, expiration, walletSignature } = req.body;
 
         // Validate required fields
-        if (!order || !typedData || !nonce || !expiration || !maker) {
-            return res.status(400).json({ error: "Missing required fields: takerAsset, quantity, price, userWallet" });
+        if (!orderData || !nonce || !expiration) {
+            return res.status(400).json({ error: "/finalize_order: Missing required fields: takerAsset, quantity, price, userWallet" });
         }
 
         const sdk = new Sdk({
@@ -126,55 +131,52 @@ app.post("/finalize_order", async (req, res) => {
             networkId: fromChainId,
             httpConnector: new FetchProviderConnector(),
         });
-        console.log("✅ SDK v5.x initialized successfully");
+        console.log("/finalize_order: ✅ SDK v5.x initialized successfully");
 
         // Get extension data separately
-        const extensionObj = order.extension;
         let extensionData = "0x";
 
-        if (extensionObj && typeof extensionObj.encode === "function") {
-            extensionData = extensionObj.encode();
-        } else if (extensionObj && typeof extensionObj.toString === "function") {
-            extensionData = extensionObj.toString();
+        // console.log(orderData);
+
+        if (extensionObject && typeof extensionObject.encode === "function") {
+            extensionData = extensionObject.encode();
+        } else if (extensionObject && typeof extensionObject.toString === "function") {
+            extensionData = extensionObject.toString();
         }
 
-        console.log("🔍 Extension data:", extensionData);
-
-        const orderStruct = order.build();
+        // console.log("🔍 Extension data:", JSON.stringify(extensionData, null, 2));
 
         // Format makerTraits as hex string (per working example)
-        const makerTraitsHex = "0x" + BigInt(orderStruct.makerTraits).toString(16).padStart(64, "0");
+        const makerTraitsHex = "0x" + BigInt(orderData.makerTraits).toString(16).padStart(64, "0");
 
         // Build final API payload following 1inch format and working example structure
-        const orderData = {
+        const orderObject = {
             orderHash: orderHash,
-            signature: signature,
+            signature: walletSignature,
             data: {
-                makerAsset: orderStruct.makerAsset.toLowerCase(),
-                takerAsset: orderStruct.takerAsset.toLowerCase(),
-                salt: orderStruct.salt.toString(),
-                receiver: orderStruct.receiver.toLowerCase(),
-                makingAmount: orderStruct.makingAmount.toString(),
-                takingAmount: orderStruct.takingAmount.toString(),
-                maker: orderStruct.maker.toLowerCase(),
+                makerAsset: orderData.makerAsset.toLowerCase(),
+                takerAsset: orderData.takerAsset.toLowerCase(),
+                salt: orderData.salt.toString(),
+                receiver: orderData.receiver.toLowerCase(),
+                makingAmount: orderData.makingAmount.toString(),
+                takingAmount: orderData.takingAmount.toString(),
+                maker: orderData.maker.toLowerCase(),
                 extension: extensionData,
                 makerTraits: makerTraitsHex,
             },
         };
 
         console.log("\n📋 Complete Order Data for HTTP Testing:");
-        console.log(JSON.stringify(orderData, null, 2));
+        console.log(JSON.stringify(orderObject, null, 2));
 
         try {
-            await sdk.submitOrder(order, signature);
+            await sdk.submitOrder(orderData, walletSignature);
         } catch (err) {
-            console.error(err.message);
+            console.error(err);
         }
 
         res.json({
             orderHash,
-            typedData,
-            maker: userWallet,
         });
     } catch (error) {
         console.error(error);
