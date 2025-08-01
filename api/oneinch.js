@@ -1,3 +1,5 @@
+const { FetchProviderConnector } = require('@1inch/limit-order-sdk');
+
 const ONE_INCH_BASE_URL = "https://api.1inch.dev/orderbook/v4.0";
 const CHAIN_ID = "42161";
 const ONE_INCH_API_KEY = process.env.VITE_ONE_INCH_API_KEY;
@@ -25,8 +27,8 @@ const submitOrder = async (orderHash, orderData, extension, signature) => {
     console.log("📤 Submitting to 1inch API:", JSON.stringify(reqObj, null, 2));
     await new FetchProviderConnector().post(`${ONE_INCH_BASE_URL}/${CHAIN_ID}`, reqObj, { Authorization: `Bearer ${ONE_INCH_API_KEY}` });
 };
- 
- const getOrderStatus = async (orderHash) => {
+
+const getOrderStatus = async (orderHash) => {
     try {
         logEvent("INFO", "Fetching order status from 1inch", { orderHash });
         const response = await fetch(`${ONE_INCH_BASE_URL}/${CHAIN_ID}/order/${orderHash}`, {
@@ -35,7 +37,7 @@ const submitOrder = async (orderHash, orderData, extension, signature) => {
                 Accept: "application/json",
             },
         });
-        const resultString= await response.text();
+        const resultString = await response.text();
         console.log("🔍 Response:", resultString);
         const result = JSON.parse(resultString);
         if (!response.ok) {
@@ -47,9 +49,9 @@ const submitOrder = async (orderHash, orderData, extension, signature) => {
                 result: null,
             };
         }
-        
+
         logEvent("INFO", "Order status fetched successfully", { orderHash, status: result.status });
-        return {error: null, result};
+        return { error: null, result };
     } catch (error) {
         logEvent("ERROR", "Failed to fetch order status", { error: error.message, orderHash });
         return {

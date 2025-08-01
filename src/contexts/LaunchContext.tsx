@@ -352,6 +352,10 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
                 nonce,
                 expiration,
                 typedDataSignature,
+                // Include bid data for database storage
+                launchId,
+                price,
+                quantity,
                 // walletSignature,
             };
 
