@@ -25,7 +25,7 @@ const config = defaultWagmiConfig({
     chains,
     projectId,
     metadata: {
-        name: 'Dutch Coin Arena',
+        name: '1Launch',
         description: 'Decentralized Token Launch Platform',
         url: 'https://dutch-coin-arena.com',
         icons: ['https://dutch-coin-arena.com/favicon.ico']

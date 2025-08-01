@@ -34,7 +34,7 @@ export function Navigation() {
               <Rocket className="w-5 h-5 text-primary-foreground" />
             </div>
             <span className="bg-gradient-primary bg-clip-text text-transparent">
-              Dutch Coin Arena
+              1Launch
             </span>
           </Link>
 
