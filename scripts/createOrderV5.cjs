@@ -9,7 +9,10 @@ dotenv.config({ path: '.env.local' });
 async function createLimitOrderV5() {
     try {
         // Configuration
-        const API_KEY = process.env.ONE_INCH_API_KEY || 'nkhoswAuNTpu4DGJ2OmxTxI7x4dLRMMM'; // Your API key from .http
+        const API_KEY = process.env.VITE_ONE_INCH_API_KEY;
+        if (!API_KEY) {
+            throw new Error("VITE_ONE_INCH_API_KEY not found in .env.local");
+        }
         const CHAIN_ID = 42161; // Arbitrum One
 
         // Setup wallet

@@ -216,6 +216,35 @@ app.post("/finalize_order", async (req, res) => {
             throw err; // Re-throw to handle in the response
         }
 
+        // Save bid to database after successful 1inch submission
+        const { launchId, price, quantity } = req.body;
+        if (launchId && price && quantity) {
+            try {
+                const { data: bidData, error: bidError } = await supabaseClient
+                    .from("bids")
+                    .insert({
+                        launch_id: launchId,
+                        price: price,
+                        quantity: quantity,
+                        wallet_address: orderData.maker.toLowerCase(),
+                        order_hash: orderHash,
+                        order_status: 'active'
+                    })
+                    .select()
+                    .single();
+
+                if (bidError) {
+                    console.error("❌ Error saving bid to database:", bidError);
+                    // Don't throw here - 1inch order was successful, just log the database error
+                } else {
+                    console.log("✅ Bid saved to database:", bidData.id);
+                }
+            } catch (dbErr) {
+                console.error("❌ Database error:", dbErr);
+                // Don't throw - 1inch submission was successful
+            }
+        }
+
         res.json({
             orderHash,
             success: true,
@@ -228,7 +257,7 @@ app.post("/finalize_order", async (req, res) => {
 
 app.post("/sync_order_status", async (req, res) => {
     const { orderHash } = req.query;
-    const {error, result} = await getOrderStatus(orderHash);
+    const { error, result } = await getOrderStatus(orderHash);
     if (error || !result) {
         console.error("❌ Error in sync_order_status:", error);
         res.status(500).json({ error: error });
@@ -237,17 +266,17 @@ app.post("/sync_order_status", async (req, res) => {
 
     // Update local database
     const { error: updateError } = await supabaseClient
-    .from("limit_orders")
-    .update({
-        status: result.status,
-        filled_amount: result.filledAmount || 0,
-        updated_at: new Date().toISOString(),
-    })
-    .eq("order_hash", orderHash);
+        .from("limit_orders")
+        .update({
+            status: result.status,
+            filled_amount: result.filledAmount || 0,
+            updated_at: new Date().toISOString(),
+        })
+        .eq("order_hash", orderHash);
 
-if (updateError) {
-    console.error("❌ Error in sync_order_status:", updateError);
-}
+    if (updateError) {
+        console.error("❌ Error in sync_order_status:", updateError);
+    }
 
     res.json(result);
 });
