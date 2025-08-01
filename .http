@@ -1,6 +1,6 @@
 
 @1inch_base_url = https://api.1inch.dev
-@ONE_INCH_API_KEY = nkhoswAuNTpu4DGJ2OmxTxI7x4dLRMMM
+@ONE_INCH_API_KEY = {{$dotenv VITE_ONE_INCH_API_KEY}}
  # Arbitrum One (Goerli)
 @CHAIN_ID = 42161
 
