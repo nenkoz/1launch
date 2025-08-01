@@ -1,0 +1,20 @@
+{
+  "network": "arbitrum",
+  "chainId": 42161,
+  "deployer": "0x3F0B4460606C5Fd6627E9D5Df11d7828Ac86b5d8",
+  "contracts": {
+    "TokenFactory": {
+      "address": "0x3a5eD47Db6328b1Ec103aF3608cF6ee41CDF8590",
+      "transactionHash": "0x2c7b7b0aeaf4af30f203578522c04fa7930de9be7fea84c50a955b417f8a9af7"
+    },
+    "AuctionController": {
+      "address": "0x59D6E3163aB675865075Df9fEA81eCfD7721082e",
+      "transactionHash": "0x054a37dbc0495d0fd9d4078fee1c66af89f1e9dc6624042b1e9d99543a58dcde"
+    }
+  },
+  "dependencies": {
+    "USDC": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    "OneInchRouter": "0x1111111254EEB25477B68fb85Ed929f73A960582"
+  },
+  "timestamp": "2025-08-01T18:03:25.003Z"
+}

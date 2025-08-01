@@ -39,6 +39,6 @@ seed*
 scripts/createOrderV6.cjs
  api/
  docs/
- artifacts/
+artifacts/
  description.md
  
