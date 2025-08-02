@@ -53,6 +53,8 @@ Content-Type: application/json
   "makerAsset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
   "takerAsset": "0x48efee14fdac70b0436677c0f5f1f00b3c4dbee4",
   "receiver": "0xc0dfdb9e7a392c3dbbe7c6fbe8fbc1789c9fe05e",
+  "itemId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f",
+  "auctionEndTime": 1721932800000
 }
 
 ### finalize_order
@@ -79,3 +81,45 @@ Content-Type: application/json
 {
     "launchId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f"
 }
+
+### execute_order
+POST http://localhost:4999/execute_order
+Content-Type: application/json
+
+{
+    "orderHash": "0x0446aeb0ce4033798513ca73c8216da3c079cc71ed2cdbdc156b54a7773746c4"
+}
+
+### fill_private_order
+POST http://localhost:4999/fill_private_order
+Content-Type: application/json
+
+{
+    "orderHash": "0x0446aeb0ce4033798513ca73c8216da3c079cc71ed2cdbdc156b54a7773746c4",
+    "maker": "0x2C31f55A6a36537a5AeC50Be3bF6986B5c5D7dCC",
+    "makerAsset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    "takerAsset": "0x48efee14fdac70b0436677c0f5f1f00b3c4dbee4",
+    "makingAmount": "100000",
+    "takingAmount": "27777777777777778688",
+    "orderData": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "signature": "0xe217bf7edca92e933a6e8746088e79f10e958f03811f1fdd70d941e0df22b9b23b873da890436d436fcae4a1a301bd23db1abf79b6eae2e3b582aeb26dd473561c"
+  }
+
+### batch_fill_private_orders
+POST http://localhost:4999/batch_fill_private_orders
+Content-Type: application/json
+
+{
+    "orders": [
+       {
+    "orderHash": "0x0446aeb0ce4033798513ca73c8216da3c079cc71ed2cdbdc156b54a7773746c4",
+    "maker": "0x2C31f55A6a36537a5AeC50Be3bF6986B5c5D7dCC",
+    "makerAsset": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    "takerAsset": "0x48efee14fdac70b0436677c0f5f1f00b3c4dbee4",
+    "makingAmount": "100000",
+    "takingAmount": "27777777777777778688",
+    "orderData": "0x0000000000000000000000000000000000000000000000000000000000000000",
+    "signature": "0xe217bf7edca92e933a6e8746088e79f10e958f03811f1fdd70d941e0df22b9b23b873da890436d436fcae4a1a301bd23db1abf79b6eae2e3b582aeb26dd473561c"
+  }
+]
+} 
