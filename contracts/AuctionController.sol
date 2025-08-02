@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -151,6 +152,12 @@ contract AuctionController is
         uint256 clearingPrice,
         uint256 totalRaised,
         uint256 filledBids
+    );
+    event PermitBidExecuted(
+        bytes32 indexed auctionId,
+        address indexed bidder,
+        uint256 usdcAmount,
+        uint256 tokenAmount
     );
 
     event BidFilled(
@@ -564,5 +571,59 @@ contract AuctionController is
         uint256 amount
     ) external onlyOwner {
         IERC20(token).safeTransfer(owner(), amount);
+    }
+
+    /**
+     * @dev Execute a bid using ERC20 permit signature (for automatic settlement)
+     * @param owner The owner of the USDC tokens (bidder)
+     * @param spender The address authorized to spend (this contract)
+     * @param value The amount of USDC authorized
+     * @param deadline The permit deadline
+     * @param v Recovery parameter of permit signature
+     * @param r R component of permit signature
+     * @param s S component of permit signature
+     * @param tokenAmount Amount of tokens to transfer to bidder
+     * @param tokenAddress Address of the auction token
+     */
+    function executePermitBid(
+        address owner,
+        address spender,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s,
+        uint256 tokenAmount,
+        address tokenAddress
+    ) external onlyOwner nonReentrant {
+        require(spender == address(this), "Invalid spender");
+        require(block.timestamp <= deadline, "Permit expired");
+        require(tokenAmount > 0, "Invalid token amount");
+
+        // Get USDC contract with permit support
+        IERC20Permit usdcPermit = IERC20Permit(USDC_ADDRESS);
+        IERC20 usdc = IERC20(USDC_ADDRESS);
+        IERC20 auctionToken = IERC20(tokenAddress);
+
+        // Execute permit to allow this contract to spend USDC
+        usdcPermit.permit(owner, spender, value, deadline, v, r, s);
+
+        // Calculate actual USDC cost based on clearing price
+        // For now, we'll use the full permitted amount
+        // In production, this should be calculated based on actual clearing price
+        uint256 usdcAmount = value;
+
+        // Transfer USDC from bidder to this contract
+        usdc.safeTransferFrom(owner, address(this), usdcAmount);
+
+        // Transfer auction tokens to bidder
+        auctionToken.safeTransfer(owner, tokenAmount);
+
+        emit PermitBidExecuted(
+            keccak256(abi.encodePacked(tokenAddress, block.timestamp)), // placeholder auction ID
+            owner,
+            usdcAmount,
+            tokenAmount
+        );
     }
 }

@@ -39,21 +39,30 @@ const createPrivateBid = async (supabaseClient, bidData) => {
       quantity,
       takerAsset,
       auctionEndTime,
+      commitHash,
+      bidNonce,
+      permit,
+      bidSignature,
     } = bidData;
 
-    logEvent('INFO', 'Creating private bid', {
+    logEvent('INFO', 'Creating private bid with permit', {
       launchId,
       userWallet,
       price,
       quantity,
+      commitHash,
+      permitDeadline: permit.deadline,
     });
 
-    // Generate a unique bid ID
-    const bidId = ethers.keccak256(
-      ethers.toUtf8Bytes(`${launchId}-${userWallet}-${Date.now()}`)
-    );
+    // Validate permit signature components
+    if (!permit || !permit.v || !permit.r || !permit.s) {
+      throw new Error('Invalid permit signature');
+    }
 
-    // Store bid in database (not submitted to 1inch yet)
+    // Generate a unique bid ID using the commit hash
+    const bidId = commitHash;
+
+    // Store bid with permit in database
     const { data: bid, error: bidError } = await supabaseClient
       .from('private_bids')
       .insert({
@@ -64,7 +73,18 @@ const createPrivateBid = async (supabaseClient, bidData) => {
         quantity: quantity,
         taker_asset: takerAsset,
         auction_end_time: auctionEndTime,
-        status: 'pending', // Not submitted to 1inch yet
+        commit_hash: commitHash,
+        bid_nonce: bidNonce,
+        // Permit signature components
+        permit_owner: permit.owner,
+        permit_spender: permit.spender,
+        permit_value: permit.value,
+        permit_deadline: permit.deadline,
+        permit_v: permit.v,
+        permit_r: permit.r,
+        permit_s: permit.s,
+        bid_signature: bidSignature,
+        status: 'pending', // Not executed yet
         created_at: new Date().toISOString(),
       })
       .select()
@@ -85,9 +105,10 @@ const createPrivateBid = async (supabaseClient, bidData) => {
       error: null,
       result: {
         bidId,
+        commitHash,
         status: 'pending',
         message:
-          'Private bid created and stored. Will be submitted to 1inch when auction ends.',
+          'Private bid created with permit signature. No payment required until auction settles.',
       },
     };
   } catch (error) {

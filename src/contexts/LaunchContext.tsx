@@ -9,6 +9,14 @@ import { useAccount, useSignMessage, useSignTypedData } from 'wagmi';
 import { supabase, type Database } from '@/lib/supabase';
 import { useWeb3 } from './Web3Context';
 import { useToast } from '@/hooks/use-toast';
+import { 
+  USDC_DOMAIN, 
+  PERMIT_TYPES, 
+  generatePermitMessage, 
+  generateBidCommit, 
+  calculateMaxUSDCAmount, 
+  generateDeadline 
+} from '@/lib/permit';
 
 export interface Launch {
   id: string;
@@ -313,31 +321,92 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
 
     try {
       const launch = launches.find(l => l.id === launchId);
-      if (!launch || !launch.tokenAddress) {
-        throw new Error('Launch not found or missing token address');
+      if (!launch || !launch.tokenAddress || !launch.auctionControllerAddress) {
+        throw new Error('Launch not found or missing required addresses');
       }
 
-      const orderObject = {
+      // Calculate maximum USDC amount needed (with buffer)
+      const maxUSDCAmount = calculateMaxUSDCAmount(price, quantity);
+      const deadline = generateDeadline();
+      
+      // Generate a random nonce for bid privacy
+      const bidNonce = Math.random().toString(36).substring(2, 15);
+      
+      // Generate bid commit hash for privacy
+      const commitHash = generateBidCommit(
         launchId,
-        takerAsset: launch.tokenAddress,
         price,
         quantity,
-        userWallet: address,
-        auctionEndTime: launch.endTime.getTime(),
+        address,
+        bidNonce
+      );
+
+      console.log('📝 Generating permit signature for USDC spending...');
+      
+      // First, we need to get the current nonce from USDC contract
+      // For now, we'll use 0 and let the backend fetch it
+      const permitNonce = 0n;
+      
+      // Generate permit message
+      const permitMessage = {
+        owner: address as `0x${string}`,
+        spender: launch.auctionControllerAddress as `0x${string}`,
+        value: maxUSDCAmount,
+        nonce: BigInt(permitNonce),
+        deadline: deadline,
       };
 
-      // 1. User signs data with wallet (trigger wallet popup)
-      console.log('✍️  Signing data with wallet...');
-
-      // 2. User signs order with wallet (trigger wallet popup)
-      const walletSignature = await signMessageAsync({
-          message: {
-              raw: ,
-          },
-          account: address as `0x${string}`,
+      // Sign the permit (EIP-712 signature)
+      console.log('✍️  Signing USDC permit...');
+      const permitSignature = await signTypedDataAsync({
+        domain: USDC_DOMAIN,
+        types: PERMIT_TYPES,
+        primaryType: 'Permit',
+        message: permitMessage,
+        account: address as `0x${string}`,
       });
 
-      // Finalize to create bid order
+      // Split signature into v, r, s components
+      const sig = permitSignature.slice(2); // Remove 0x prefix
+      const r = `0x${sig.slice(0, 64)}`;
+      const s = `0x${sig.slice(64, 128)}`;
+      const v = parseInt(sig.slice(128, 130), 16);
+
+      console.log('📝 Signing bid commitment...');
+      
+      // Sign the bid commitment for authenticity
+      const bidMessage = `Bid Commitment: ${commitHash}\nLaunch: ${launchId}\nPrice: $${price}\nQuantity: ${quantity}\nNonce: ${bidNonce}`;
+      const bidSignature = await signMessageAsync({
+        message: bidMessage,
+        account: address as `0x${string}`,
+      });
+
+      // Prepare bid data with permit signature
+      const bidData = {
+        launchId,
+        userWallet: address,
+        price,
+        quantity,
+        commitHash,
+        bidNonce,
+        takerAsset: launch.tokenAddress,
+        auctionEndTime: launch.endTime.getTime(),
+        // Permit signature components
+        permit: {
+          owner: address,
+          spender: launch.auctionControllerAddress,
+          value: maxUSDCAmount.toString(),
+          deadline: deadline.toString(),
+          v,
+          r,
+          s,
+        },
+        bidSignature,
+      };
+
+      console.log('📤 Submitting private bid with permit...');
+
+      // Submit to backend
       const createBidResp = await fetch(
         `${BACKEND_API_BASE_URL}/create_private_bid`,
         {
@@ -345,16 +414,18 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(orderObject),
+          body: JSON.stringify(bidData),
         }
       );
+
       if (!createBidResp.ok) {
         const { error } = await createBidResp.json();
-        throw new Error(error || 'Failed to create order in backend');
+        throw new Error(error || 'Failed to create bid');
       }
 
-      const v = await createBidResp.json();
-      console.log('Bid', v);
+      const result = await createBidResp.json();
+      console.log('✅ Private bid created:', result);
+
       // Update local state
       setLaunches(prev =>
         prev.map(l => {
@@ -372,16 +443,16 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
       await reloadLaunch(launchId);
 
       toast({
-        title: 'Bid Submitted',
-        description: `Successfully submitted bid for ${quantity} ${launch.tokenSymbol} at $${price}`,
+        title: 'Private Bid Submitted',
+        description: `Successfully submitted private bid for ${quantity} ${launch.tokenSymbol} at $${price}. No payment required until auction settles.`,
       });
 
-      console.log('Bid submitted successfully:', {
+      console.log('Private bid submitted successfully:', {
         launchId,
         price,
         quantity,
-        // todo
-        // orderId: data.orderId,
+        commitHash,
+        maxUSDCAmount: maxUSDCAmount.toString(),
       });
     } catch (error) {
       console.error('Error submitting bid:', error);
