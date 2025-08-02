@@ -8,11 +8,11 @@ import {Ownable} from "openzeppelin-contracts/access/Ownable.sol";
 import {Pausable} from "openzeppelin-contracts/security/Pausable.sol";
 
 /**
- * @title AuctionControllerWithResolver
+ * @title AuctionProtocol
  * @dev Combined auction controller and resolver for private auction bids
  * This contract handles both auction management and order execution
  */
-contract AuctionControllerWithResolver is ReentrancyGuard, Ownable, Pausable {
+contract AuctionProtocol is ReentrancyGuard, Ownable, Pausable {
     using SafeERC20 for IERC20;
 
     // Auction structure
