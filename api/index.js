@@ -60,7 +60,17 @@ app.use(express.json());
 
 //  cors all origin
 const cors = require('cors');
-const { getOrderStatus, submitOrder, settleAuction } = require('./oneinch');
+const {
+  getOrderStatus,
+  submitOrder,
+  executeOrder,
+  settleAuction,
+} = require('./oneinch');
+const {
+  fillPrivateAuctionOrder,
+  fillBatchPrivateAuctionOrders,
+  isOrderFilled,
+} = require('./resolver');
 app.use(cors());
 
 // Configure Supabase
@@ -315,6 +325,7 @@ app.post('/finalize_order', async (req, res) => {
         expiration: orderData.expiration,
         allowed_sender: CONTRACTS.AUCTION_CONTROLLER,
         order_data: orderResult,
+        signature: typedDataSignature, // Store the signature for later execution
         status: 'active',
       });
 
@@ -372,12 +383,234 @@ app.post('/sync_order_status', async (req, res) => {
 
 app.post('/settle_auction', async (req, res) => {
   const { launchId } = req.body;
-  const { error, result } = await settleAuction(launchId);
+  const { error, result } = await settleAuction(supabaseClient, launchId);
   if (error || !result) {
     console.error('❌ Error in settle_auction:', error);
     res.status(500).json({ error: error });
   }
   res.json(result);
+});
+
+app.post('/execute_order', async (req, res) => {
+  try {
+    const { orderHash } = req.body;
+
+    if (!orderHash) {
+      return res.status(400).json({ error: 'Missing orderHash parameter' });
+    }
+
+    // Get order details from database
+    const { data: order, error: orderError } = await supabaseClient
+      .from('limit_orders')
+      .select('*')
+      .eq('order_hash', orderHash)
+      .single();
+
+    if (orderError || !order) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    console.log('🚀 Executing order:', orderHash);
+
+    const { error, result } = await executeOrder(
+      orderHash,
+      order.order_data,
+      order.signature
+    );
+
+    if (error) {
+      console.error('❌ Error executing order:', error);
+      return res.status(500).json({ error });
+    }
+
+    // Update order status
+    await supabaseClient
+      .from('limit_orders')
+      .update({
+        status: 'filled',
+        filled_at: new Date().toISOString(),
+        execution_tx_hash: result.txHash,
+      })
+      .eq('order_hash', orderHash);
+
+    res.json({
+      success: true,
+      txHash: result.txHash,
+      message:
+        'Order executed successfully - funds have been transferred from your wallet!',
+    });
+  } catch (error) {
+    console.error('❌ Error in execute_order:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/orders', async (req, res) => {
+  try {
+    const { launchId } = req.query;
+
+    if (!launchId) {
+      return res.status(400).json({ error: 'Missing launchId parameter' });
+    }
+
+    // Get orders for this launch
+    const { data: orders, error: ordersError } = await supabaseClient
+      .from('limit_orders')
+      .select(
+        `
+        order_hash,
+        status,
+        maker_address,
+        making_amount,
+        taking_amount,
+        created_at,
+        filled_at,
+        execution_tx_hash
+      `
+      )
+      .eq('bids.launch_id', launchId)
+      .order('created_at', { ascending: false });
+
+    if (ordersError) {
+      console.error('❌ Error fetching orders:', ordersError);
+      return res.status(500).json({ error: ordersError.message });
+    }
+
+    res.json({ orders: orders || [] });
+  } catch (error) {
+    console.error('❌ Error in /orders:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/fill_private_order', async (req, res) => {
+  try {
+    const {
+      orderHash,
+      maker,
+      makerAsset,
+      takerAsset,
+      makingAmount,
+      takingAmount,
+      orderData,
+      signature,
+    } = req.body;
+
+    if (
+      !orderHash ||
+      !maker ||
+      !makerAsset ||
+      !takerAsset ||
+      !makingAmount ||
+      !takingAmount
+    ) {
+      return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    // Get private key from environment
+    const privateKey = process.env.RESOLVER_PRIVATE_KEY;
+    if (!privateKey) {
+      return res
+        .status(500)
+        .json({ error: 'RESOLVER_PRIVATE_KEY not configured' });
+    }
+
+    console.log('🚀 Filling private auction order:', orderHash);
+
+    const { error, result } = await fillPrivateAuctionOrder(
+      orderHash,
+      maker,
+      makerAsset,
+      takerAsset,
+      BigInt(makingAmount),
+      BigInt(takingAmount),
+      orderData,
+      signature,
+      privateKey
+    );
+
+    if (error) {
+      console.error('❌ Error filling private order:', error);
+      return res.status(500).json({ error });
+    }
+
+    res.json({
+      success: true,
+      txHash: result.txHash,
+      message:
+        'Private auction order filled successfully - funds have been transferred!',
+    });
+  } catch (error) {
+    console.error('❌ Error in /fill_private_order:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/batch_fill_private_orders', async (req, res) => {
+  try {
+    const { orders } = req.body;
+
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ error: 'Missing or invalid orders array' });
+    }
+
+    // Get private key from environment
+    const privateKey = process.env.RESOLVER_PRIVATE_KEY;
+    if (!privateKey) {
+      return res
+        .status(500)
+        .json({ error: 'RESOLVER_PRIVATE_KEY not configured' });
+    }
+
+    console.log('🚀 Batch filling private auction orders:', orders.length);
+
+    const { error, result } = await fillBatchPrivateAuctionOrders(
+      orders,
+      privateKey
+    );
+
+    if (error) {
+      console.error('❌ Error batch filling private orders:', error);
+      return res.status(500).json({ error });
+    }
+
+    res.json({
+      success: true,
+      txHash: result.txHash,
+      orderCount: result.orderCount,
+      message: `Successfully filled ${result.orderCount} private auction orders!`,
+    });
+  } catch (error) {
+    console.error('❌ Error in /batch_fill_private_orders:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/order_status/:orderHash', async (req, res) => {
+  try {
+    const { orderHash } = req.params;
+
+    if (!orderHash) {
+      return res.status(400).json({ error: 'Missing orderHash parameter' });
+    }
+
+    console.log('🔍 Checking order status:', orderHash);
+
+    const { error, result } = await isOrderFilled(orderHash);
+
+    if (error) {
+      console.error('❌ Error checking order status:', error);
+      return res.status(500).json({ error });
+    }
+
+    res.json({
+      orderHash,
+      isFilled: result.isFilled,
+    });
+  } catch (error) {
+    console.error('❌ Error in /order_status/:orderHash:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.listen(PORT, () => {
