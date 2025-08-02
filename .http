@@ -79,7 +79,7 @@ POST http://localhost:4999/settle_private_auction
 Content-Type: application/json
 
 {
-    "launchId": "8cbdfdf7-0a34-466f-97b4-c1a1b11e664f"
+    "launchId": "bc7e1011-c523-4941-b602-bc413f630740"
 }
 
 ### execute_order
