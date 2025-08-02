@@ -74,8 +74,8 @@ Content-Type: application/json
     "orderHash": "0x0446aeb0ce4033798513ca73c8216da3c079cc71ed2cdbdc156b54a7773746c4"
 }
 
-### settle_auction
-POST http://localhost:4999/settle_auction
+### settle_private_auction
+POST http://localhost:4999/settle_private_auction
 Content-Type: application/json
 
 {
