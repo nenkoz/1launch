@@ -71,6 +71,12 @@ const {
   fillBatchPrivateAuctionOrders,
   isOrderFilled,
 } = require('./resolver');
+const {
+  createPrivateBid,
+  submitPendingBidsTo1inch,
+  getPrivateBids,
+  cancelPrivateBid,
+} = require('./private-bids');
 app.use(cors());
 
 // Configure Supabase
@@ -292,15 +298,17 @@ app.post('/finalize_order', async (req, res) => {
 
     // Store bid in database with order information
     const { data: bidData, error: bidError } = await supabaseClient
-      .from('bids')
+      .from('private_bids')
       .insert({
         launch_id: launchId,
+        user_wallet: orderData.maker,
         price,
         quantity,
-        wallet_address: orderData.maker,
+        taker_asset: orderData.takerAsset,
+        auction_end_time: new Date().toISOString(),
+        status: 'submitted',
         order_hash: orderHash,
-        one_inch_order_id: orderResult.orderId,
-        order_status: 'active',
+        submitted_at: new Date().toISOString(),
       })
       .select()
       .single();
@@ -468,7 +476,7 @@ app.get('/orders', async (req, res) => {
         execution_tx_hash
       `
       )
-      .eq('bids.launch_id', launchId)
+      .eq('private_bids.launch_id', launchId)
       .order('created_at', { ascending: false });
 
     if (ordersError) {
@@ -609,6 +617,198 @@ app.get('/order_status/:orderHash', async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error in /order_status/:orderHash:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Private Bids API Endpoints
+
+app.post('/create_private_bid', async (req, res) => {
+  try {
+    const {
+      launchId,
+      userWallet,
+      price,
+      quantity,
+      takerAsset,
+      auctionEndTime,
+    } = req.body;
+
+    if (
+      !launchId ||
+      !userWallet ||
+      !price ||
+      !quantity ||
+      !takerAsset ||
+      !auctionEndTime
+    ) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    console.log('📋 Creating private bid:', {
+      launchId,
+      userWallet,
+      price,
+      quantity,
+    });
+
+    const { error, result } = await createPrivateBid(supabaseClient, {
+      launchId,
+      userWallet,
+      price,
+      quantity,
+      takerAsset,
+      auctionEndTime,
+    });
+
+    if (error) {
+      console.error('❌ Error creating private bid:', error);
+      return res.status(500).json({ error });
+    }
+
+    res.json({
+      success: true,
+      bidId: result.bidId,
+      status: result.status,
+      message: result.message,
+    });
+  } catch (error) {
+    console.error('❌ Error in /create_private_bid:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/submit_pending_bids', async (req, res) => {
+  try {
+    const { launchId } = req.body;
+
+    if (!launchId) {
+      return res.status(400).json({ error: 'Missing launchId parameter' });
+    }
+
+    console.log('🚀 Submitting pending bids for launch:', launchId);
+
+    const { error, result } = await submitPendingBidsTo1inch(
+      supabaseClient,
+      launchId
+    );
+
+    if (error) {
+      console.error('❌ Error submitting pending bids:', error);
+      return res.status(500).json({ error });
+    }
+
+    res.json({
+      success: true,
+      submittedCount: result.submittedCount,
+      submittedBids: result.submittedBids,
+      message: result.message,
+    });
+  } catch (error) {
+    console.error('❌ Error in /submit_pending_bids:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/private_bids/:launchId', async (req, res) => {
+  try {
+    const { launchId } = req.params;
+
+    if (!launchId) {
+      return res.status(400).json({ error: 'Missing launchId parameter' });
+    }
+
+    console.log('📋 Getting private bids for launch:', launchId);
+
+    const { error, result } = await getPrivateBids(supabaseClient, launchId);
+
+    if (error) {
+      console.error('❌ Error getting private bids:', error);
+      return res.status(500).json({ error });
+    }
+
+    res.json({
+      success: true,
+      bids: result.bids,
+    });
+  } catch (error) {
+    console.error('❌ Error in /private_bids/:launchId:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/cancel_private_bid', async (req, res) => {
+  try {
+    const { bidId, userWallet } = req.body;
+
+    if (!bidId || !userWallet) {
+      return res.status(400).json({ error: 'Missing bidId or userWallet' });
+    }
+
+    console.log('❌ Cancelling private bid:', { bidId, userWallet });
+
+    const { error, result } = await cancelPrivateBid(
+      supabaseClient,
+      bidId,
+      userWallet
+    );
+
+    if (error) {
+      console.error('❌ Error cancelling private bid:', error);
+      return res.status(500).json({ error });
+    }
+
+    res.json({
+      success: true,
+      bidId: result.bidId,
+      status: result.status,
+      message: result.message,
+    });
+  } catch (error) {
+    console.error('❌ Error in /cancel_private_bid:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/settle_private_auction', async (req, res) => {
+  try {
+    const { launchId } = req.body;
+
+    if (!launchId) {
+      return res.status(400).json({ error: 'Missing launchId parameter' });
+    }
+
+    console.log('🚀 Settling private auction:', launchId);
+
+    // Step 1: Submit all pending bids to 1inch
+    const { error: submitError, result: submitResult } =
+      await submitPendingBidsTo1inch(supabaseClient, launchId);
+
+    if (submitError) {
+      console.error('❌ Error submitting pending bids:', submitError);
+      return res.status(500).json({ error: submitError });
+    }
+
+    // Step 2: Settle the auction using the resolver
+    const { error: settleError, result: settleResult } = await settleAuction(
+      supabaseClient,
+      launchId
+    );
+
+    if (settleError) {
+      console.error('❌ Error settling auction:', settleError);
+      return res.status(500).json({ error: settleError });
+    }
+
+    res.json({
+      success: true,
+      submittedBids: submitResult.submittedCount,
+      executedOrders: settleResult.executedOrders,
+      clearingPrice: settleResult.clearingPrice,
+      message: `Private auction settled successfully. ${submitResult.submittedCount} bids submitted, ${settleResult.executedOrders} orders executed.`,
+    });
+  } catch (error) {
+    console.error('❌ Error in /settle_private_auction:', error);
     res.status(500).json({ error: error.message });
   }
 });

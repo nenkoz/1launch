@@ -168,31 +168,43 @@ const settleAuction = async (supabaseClient, launchId) => {
       .select(
         `
         *,
-        bids!inner(launch_id)
+        private_bids!inner(launch_id)
       `
       )
-      .eq('bids.launch_id', launchId)
+      .eq('private_bids.launch_id', launchId)
       .eq('status', 'active');
 
     if (ordersError) {
       logEvent('ERROR', 'Failed to fetch active orders', ordersError);
     }
 
-    // STEP 1: Calculate clearing price first
-    const { data: clearingResult, error: clearingError } =
-      await supabaseClient.rpc('calculate_clearing_price', {
-        p_launch_id: launchId,
-        p_target_allocation: launch.target_allocation,
-      });
+    // STEP 1: Calculate clearing price using private_bids
+    const { data: privateBids, error: bidsError } = await supabaseClient
+      .from('private_bids')
+      .select('price, quantity')
+      .eq('launch_id', launchId)
+      .eq('status', 'submitted')
+      .order('price', { ascending: false });
 
-    if (clearingError) {
-      throw new Error(
-        `Failed to calculate clearing price: ${clearingError.message}`
-      );
+    if (bidsError) {
+      throw new Error(`Failed to fetch private bids: ${bidsError.message}`);
     }
 
-    const { clearing_price, filled_quantity, successful_bids_count } =
-      clearingResult[0];
+    // Calculate clearing price manually
+    let remainingAllocation = launch.target_allocation;
+    let clearing_price = 0;
+    let filled_quantity = 0;
+    let successful_bids_count = 0;
+
+    for (const bid of privateBids) {
+      if (remainingAllocation > 0) {
+        const fillAmount = Math.min(bid.quantity, remainingAllocation);
+        remainingAllocation -= fillAmount;
+        filled_quantity += fillAmount;
+        clearing_price = bid.price;
+        successful_bids_count++;
+      }
+    }
 
     logEvent('INFO', 'Clearing price calculated', {
       clearingPrice: clearing_price,
@@ -251,12 +263,12 @@ const settleAuction = async (supabaseClient, launchId) => {
                 })
                 .eq('order_hash', order.order_hash);
 
-              // Update corresponding bid status
+              // Update corresponding private bid status
               await supabaseClient
-                .from('bids')
+                .from('private_bids')
                 .update({
-                  order_status: 'filled',
-                  filled_amount: order.taking_amount,
+                  status: 'executed',
+                  executed_at: new Date().toISOString(),
                 })
                 .eq('order_hash', order.order_hash);
 
@@ -291,11 +303,12 @@ const settleAuction = async (supabaseClient, launchId) => {
               })
               .eq('order_hash', order.order_hash);
 
-            // Update corresponding bid status
+            // Update corresponding private bid status
             await supabaseClient
-              .from('bids')
+              .from('private_bids')
               .update({
-                order_status: 'cancelled',
+                status: 'cancelled',
+                cancelled_at: new Date().toISOString(),
               })
               .eq('order_hash', order.order_hash);
           }
@@ -335,6 +348,7 @@ const settleAuction = async (supabaseClient, launchId) => {
         successful_bids_count,
         executed_orders_count: executedOrders,
         total_executed_amount: totalExecutedAmount,
+        settlement_method: 'private_bids',
       });
 
     if (settlementError) {
