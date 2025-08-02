@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS private_bids (
     submitted_at TIMESTAMP WITH TIME ZONE,
     cancelled_at TIMESTAMP WITH TIME ZONE,
     executed_at TIMESTAMP WITH TIME ZONE
-
+);
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_private_bids_launch_id ON private_bids(launch_id);
