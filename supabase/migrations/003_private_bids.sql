@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS private_bids (
     launch_id UUID NOT NULL REFERENCES launches(id) ON DELETE CASCADE,
     user_wallet TEXT NOT NULL,
     price DECIMAL(20, 6) NOT NULL,
-    quantity DECIMAL(20, 18) NOT NULL,
+    quantity BIGINT NOT NULL,
     taker_asset TEXT NOT NULL,
     auction_end_time TIMESTAMP WITH TIME ZONE NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'cancelled', 'executed')),
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS private_bids (
     submitted_at TIMESTAMP WITH TIME ZONE,
     cancelled_at TIMESTAMP WITH TIME ZONE,
     executed_at TIMESTAMP WITH TIME ZONE
-);
+
 
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_private_bids_launch_id ON private_bids(launch_id);
@@ -27,7 +27,7 @@ RETURNS TABLE (
     id TEXT,
     user_wallet TEXT,
     price DECIMAL(20, 6),
-    quantity DECIMAL(20, 18),
+    quantity BIGINT,
     taker_asset TEXT,
     auction_end_time TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE
@@ -57,7 +57,7 @@ RETURNS TABLE (
     submitted_bids INTEGER,
     cancelled_bids INTEGER,
     executed_bids INTEGER,
-    total_quantity DECIMAL(20, 18),
+    total_quantity BIGINT,
     avg_price DECIMAL(20, 6),
     min_price DECIMAL(20, 6),
     max_price DECIMAL(20, 6)
