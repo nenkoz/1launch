@@ -11,3 +11,5 @@ supabase migration up --local
 # Check migration status
 
 supabase migration list --local
+
+supabase db push
