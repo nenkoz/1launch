@@ -64,6 +64,7 @@ interface LaunchContextType {
     quantity: number
   ) => Promise<void>;
   settleAuction: (launchId: string) => Promise<void>;
+  settleMultiTokenAuction: (launchId: string, useBatchExecution?: boolean) => Promise<void>;
 }
 
 const LaunchContext = createContext<LaunchContextType | undefined>(undefined);
@@ -540,7 +541,7 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
 
   const settleAuction = async (launchId: string) => {
     try {
-      const resp = await fetch(`${BACKEND_API_BASE_URL}/settle_auction`, {
+      const resp = await fetch(`${BACKEND_API_BASE_URL}/settle_private_auction`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -578,6 +579,54 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
     }
   };
 
+  const settleMultiTokenAuction = async (launchId: string, useBatchExecution = false) => {
+    try {
+      console.log('🔄 Starting multi-token auction settlement...');
+      
+      const resp = await fetch(`${BACKEND_API_BASE_URL}/settle_multi_token_auction`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ launchId, useBatchExecution }),
+      });
+      
+      const result = await resp.json();
+      console.log('Multi-token settle result:', result);
+      
+      if (!resp.ok) {
+        throw new Error(result.error || 'Failed to settle multi-token auction');
+      }
+
+      // Reload the complete launch data
+      await reloadLaunch(launchId);
+
+      toast({
+        title: 'Multi-Token Auction Settled! 🎉',
+        description: `${result.settledBids} bids executed successfully. Clearing price: $${result.clearingPrice?.toFixed(4) || 'N/A'}`,
+      });
+
+      console.log('Multi-token auction settled successfully:', {
+        launchId,
+        settledBids: result.settledBids,
+        clearingPrice: result.clearingPrice,
+        totalBids: result.totalBids,
+        winningBids: result.winningBids,
+        losingBids: result.losingBids,
+        executionTxHash: result.executionTxHash,
+        batchExecution: result.usedBatchExecution,
+      });
+    } catch (error) {
+      console.error('Error settling multi-token auction:', error);
+      toast({
+        title: 'Error',
+        description:
+          error instanceof Error ? error.message : 'Failed to settle multi-token auction',
+        variant: 'destructive',
+      });
+    }
+  };
+
   return (
     <LaunchContext.Provider
       value={{
@@ -586,6 +635,7 @@ export const LaunchProvider: React.FC<LaunchProviderProps> = ({ children }) => {
         addLaunch,
         submitBid,
         settleAuction,
+        settleMultiTokenAuction,
       }}
     >
       {children}

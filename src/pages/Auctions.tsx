@@ -1,28 +1,13 @@
-import { useState } from "react";
 import { Navigation } from "@/components/Navigation";
 import { LaunchCard } from "@/components/LaunchCard";
-import { BidForm } from "@/components/BidForm";
 import { BidDistribution } from "@/components/BidDistribution";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Clock, TrendingUp, CheckCircle } from "lucide-react";
 import { Launch, useLaunch } from "@/contexts/LaunchContext";
 
 const Auctions = () => {
-    const { launches, submitBid } = useLaunch();
-    const [selectedAuction, setSelectedAuction] = useState<Launch | null>(null);
-    const [isBidDialogOpen, setIsBidDialogOpen] = useState(false);
-
-    const handleBidSubmit = async (launchId: string, price: number, quantity: number) => {
-        await submitBid(launchId, price, quantity);
-        setIsBidDialogOpen(false);
-    };
-
-    const openBidDialog = (auction: Launch) => {
-        setSelectedAuction(auction);
-        setIsBidDialogOpen(true);
-    };
+    const { launches } = useLaunch();
 
     const liveAuctions = launches.filter((auction) => auction.status === "live" || auction.status === "ending_soon" || (auction.isSettling && auction.status !== "completed"));
     const completedAuctions = launches.filter((auction) => auction.status === "completed");
@@ -86,7 +71,7 @@ const Auctions = () => {
                                     {liveAuctions.map((auction) => (
                                         <div key={auction.id} className="space-y-4">
                                             <div className="relative">
-                                                <LaunchCard {...auction} onBidClick={() => openBidDialog(auction)} />
+                                                <LaunchCard {...auction} />
                                             </div>
                                         </div>
                                     ))}
@@ -128,16 +113,6 @@ const Auctions = () => {
                         </TabsContent>
                     </Tabs>
                 </div>
-
-                {/* Bid Dialog */}
-                <Dialog open={isBidDialogOpen} onOpenChange={setIsBidDialogOpen}>
-                    <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                            <DialogTitle>Submit Private Bid for {selectedAuction?.tokenName}</DialogTitle>
-                        </DialogHeader>
-                        {selectedAuction && <BidForm tokenName={selectedAuction.tokenName} tokenSymbol={selectedAuction.tokenSymbol} onSubmitBid={(price, quantity) => handleBidSubmit(selectedAuction.id, price, quantity)} />}
-                    </DialogContent>
-                </Dialog>
             </main>
         </div>
     );

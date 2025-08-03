@@ -16,5 +16,31 @@
     "USDC": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
     "OneInchRouter": "0x1111111254EEB25477B68fb85Ed929f73A960582"
   },
-  "timestamp": "2025-08-01T18:03:25.003Z"
+  "timestamp": "2025-08-01T18:03:25.003Z",
+  "MultiTokenAuctionResolver": {
+    "contractName": "MultiTokenAuctionResolver",
+    "address": "0xd77E99fF2cb7fC588206164fC0BC6661Aaedf7b9",
+    "deployer": "0x3F0B4460606C5Fd6627E9D5Df11d7828Ac86b5d8",
+    "deploymentBlock": 364502681,
+    "timestamp": "2025-08-03T10:36:03.371Z",
+    "network": {
+      "name": "arbitrum",
+      "chainId": "42161"
+    }
+  },
+  "AuctionFusionResolver": {
+    "contractName": "AuctionFusionResolver",
+    "address": "0xC3ce44B2E68c11fF7e80Cc997Dd28f79A2EA41Ea",
+    "deployer": "0x3F0B4460606C5Fd6627E9D5Df11d7828Ac86b5d8",
+    "deploymentBlock": 364530310,
+    "timestamp": "2025-08-03T12:31:07.908Z",
+    "network": {
+      "name": "arbitrum",
+      "chainId": "42161"
+    },
+    "constructorArgs": {
+      "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+      "oneInchRouter": "0x1111111254EEB25477B68fb85Ed929f73A960582"
+    }
+  }
 }

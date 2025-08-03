@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
+import { BidDialog } from "@/components/BidDialog";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { TrendingDown, TrendingUp, Clock, Users, Coins } from "lucide-react";
@@ -16,6 +16,7 @@ interface LaunchCardProps {
   id: string;
   tokenName: string;
   tokenSymbol: string;
+  tokenAddress: string;
   description: string;
   endTime: Date;
   totalSupply: number;
@@ -28,8 +29,10 @@ interface LaunchCardProps {
 }
 
 export function LaunchCard({
+  id,
   tokenName,
   tokenSymbol,
+  tokenAddress,
   description,
   endTime,
   totalSupply,
@@ -179,15 +182,14 @@ export function LaunchCard({
             )}
           </div>
 
-          {/* Action Button */}
-          <Button
-            variant={isActive ? "bid" : "secondary"}
-            className="w-full"
-            disabled={!isActive}
-            onClick={isActive ? onBidClick : undefined}
-          >
-            {isActive ? "Place Private Bid" : isLaunched ? "Launch Complete" : "Bidding Closed"}
-          </Button>
+          {/* Bid Dialog */}
+          <BidDialog
+            launchId={id}
+            tokenSymbol={tokenSymbol}
+            auctionTokenAddress={tokenAddress}
+            isActive={isActive}
+            onBidSubmitted={onBidClick || (() => window.location.reload())}
+          />
         </div>
       </div>
     </div>

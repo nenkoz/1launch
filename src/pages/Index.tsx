@@ -2,7 +2,6 @@ import { Navigation } from '@/components/Navigation';
 import { Hero } from '@/components/Hero';
 import { StatsBar } from '@/components/StatsBar';
 import { LaunchCard } from '@/components/LaunchCard';
-import { BidForm } from '@/components/BidForm';
 
 const Index = () => {
   // Mock launch data
@@ -11,6 +10,7 @@ const Index = () => {
       id: '1',
       tokenName: 'EcoToken',
       tokenSymbol: 'ECO',
+      tokenAddress: '0x1234567890123456789012345678901234567890', // Mock auction token address
       description:
         'Revolutionary green energy token powering sustainable blockchain infrastructure',
       endTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
@@ -23,6 +23,7 @@ const Index = () => {
       id: '2',
       tokenName: 'GameFi Pro',
       tokenSymbol: 'GFP',
+      tokenAddress: '0x2345678901234567890123456789012345678901', // Mock auction token address
       description:
         'Next-generation gaming platform connecting players and developers worldwide',
       endTime: new Date(Date.now() + 5 * 60 * 60 * 1000), // 5 hours from now
@@ -35,6 +36,7 @@ const Index = () => {
       id: '3',
       tokenName: 'MetaVerse',
       tokenSymbol: 'META',
+      tokenAddress: '0x3456789012345678901234567890123456789012', // Mock auction token address
       description:
         'Building the infrastructure for virtual worlds and digital experiences',
       endTime: new Date(Date.now() - 1 * 60 * 60 * 1000), // 1 hour ago (completed)
@@ -116,6 +118,7 @@ const Index = () => {
               {launches.map(launch => (
                 <div key={launch.id} className="space-y-4">
                   <LaunchCard {...launch} />
+                  {/* Bid form will be shown in a modal/dialog */}
                 </div>
               ))}
             </div>

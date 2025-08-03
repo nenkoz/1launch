@@ -601,8 +601,8 @@ contract AuctionController is
         require(tokenAmount > 0, "Invalid token amount");
 
         // Get USDC contract with permit support
-        IERC20Permit usdcPermit = IERC20Permit(USDC_ADDRESS);
-        IERC20 usdc = IERC20(USDC_ADDRESS);
+        IERC20Permit usdcPermit = IERC20Permit(address(USDC));
+        IERC20 usdc = USDC;
         IERC20 auctionToken = IERC20(tokenAddress);
 
         // Execute permit to allow this contract to spend USDC

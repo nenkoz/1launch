@@ -77,7 +77,40 @@ const {
   getPrivateBids,
   cancelPrivateBid,
 } = require('./private-bids');
+
+const {
+  createMultiTokenBid,
+  settleMultiTokenAuction,
+} = require('./multi-token-auction');
+
+const {
+  executeWinningBidsWithSmartContract,
+  batchExecuteWinningBids,
+} = require('./corrected-multi-token-settlement');
+
+const {
+  createIntentBid,
+  settleIntentAuction,
+} = require('./intent-auction');
+
+const {
+  createResolverFusionBid,
+  settleResolverFusionAuction,
+} = require('./fusion-resolver-auction');
+
 app.use(cors());
+
+// Token symbol mapping for Arbitrum
+const getTokenSymbol = (tokenAddress) => {
+  const TOKEN_SYMBOLS = {
+    '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 'USDC',
+    '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': 'WETH', 
+    '0x912ce59144191c1204e64559fe8253a0e49e6548': 'ARB',
+    '0xf97f4df75117a78c1a5a0dbb814af92458539fb4': 'LINK',
+    '0xfa7f8980b0f1e64a2062791cc3b0871572f1f7f0': 'UNI',
+  };
+  return TOKEN_SYMBOLS[tokenAddress.toLowerCase()] || 'UNKNOWN';
+};
 
 // Configure Supabase
 const supabaseClient = createClient(
@@ -737,6 +770,186 @@ app.get('/private_bids/:launchId', async (req, res) => {
   }
 });
 
+// Multi-token bidding endpoints
+app.post('/create_multi_token_bid', async (req, res) => {
+  try {
+    const result = await createMultiTokenBid(supabaseClient, req.body);
+    
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    res.json(result.result);
+  } catch (error) {
+    console.error('Error creating multi-token bid:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/settle_multi_token_auction', async (req, res) => {
+  try {
+    const { launchId, useBatchExecution = false } = req.body;
+    
+    if (!launchId) {
+      return res.status(400).json({ error: 'Launch ID is required' });
+    }
+
+    console.log('🔄 Starting smart contract multi-token auction settlement for:', launchId);
+
+    // Phase 1: Determine winners using existing logic (no token conversion)
+    const winnerSelection = await settleMultiTokenAuction(supabaseClient, launchId);
+    
+    if (winnerSelection.error) {
+      return res.status(400).json({ error: winnerSelection.error });
+    }
+
+    const { winningBids, losingBids } = winnerSelection.result;
+
+    if (winningBids === 0) {
+      return res.json({ 
+        message: 'No winning bids to execute',
+        totalBids: winnerSelection.result.totalBids,
+        winningBids: 0,
+        losingBids: winnerSelection.result.losingBids,
+      });
+    }
+
+    // Phase 2: Get winning bid details from database
+    const { data: winningBidDetails, error: bidsError } = await supabaseClient
+      .from('multi_token_bids')
+      .select('*')
+      .eq('launch_id', launchId)
+      .eq('status', 'winning'); // Assumes winner selection marks bids as 'winning'
+
+    if (bidsError || !winningBidDetails || winningBidDetails.length === 0) {
+      return res.status(400).json({ error: 'Could not fetch winning bid details' });
+    }
+
+    // Phase 3: Get auction token address
+    const { data: launch, error: launchError } = await supabaseClient
+      .from('launches')
+      .select('token_address')
+      .eq('id', launchId)
+      .single();
+
+    if (launchError || !launch?.token_address) {
+      return res.status(400).json({ error: 'Could not fetch auction token address' });
+    }
+
+    // Phase 4: Execute smart contract settlement
+    let executionResult;
+    
+    if (useBatchExecution && winningBidDetails.length > 1) {
+      console.log('📦 Using batch execution for', winningBidDetails.length, 'winning bids');
+      executionResult = await batchExecuteWinningBids(winningBidDetails, launch.token_address);
+    } else {
+      console.log('⚡ Using individual execution for', winningBidDetails.length, 'winning bids');
+      executionResult = await executeWinningBidsWithSmartContract(winningBidDetails, launch.token_address);
+    }
+
+    // Phase 5: Update database with execution results
+    for (const executedBid of executionResult.executedBids || executionResult) {
+      await supabaseClient
+        .from('multi_token_bids')
+        .update({
+          status: 'executed',
+          conversion_tx_hash: executedBid.txHash,
+          conversion_method: executedBid.conversionMethod,
+          executed_at: new Date().toISOString(),
+        })
+        .eq('id', executedBid.id);
+    }
+
+    console.log('✅ Smart contract multi-token auction settled successfully:', {
+      launchId,
+      totalBids: winnerSelection.result.totalBids,
+      winners: winningBidDetails.length,
+      losers: winnerSelection.result.losingBids,
+      executedBids: executionResult.executedBids?.length || executionResult.length,
+      batchExecution: useBatchExecution,
+    });
+
+    res.json({
+      settledBids: executionResult.executedBids?.length || executionResult.length,
+      clearingPrice: winnerSelection.result.clearingPrice,
+      totalBids: winnerSelection.result.totalBids,
+      winningBids: winningBidDetails.length,
+      losingBids: winnerSelection.result.losingBids,
+      executionTxHash: executionResult.txHash,
+      usedBatchExecution: useBatchExecution,
+    });
+  } catch (error) {
+    console.error('❌ Error settling multi-token auction with smart contract:', error);
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
+  }
+});
+
+// Intent-based bidding endpoints (works with ANY token!)
+app.post('/create_intent_bid', async (req, res) => {
+  try {
+    console.log('🎯 Creating intent-based bid...');
+    const result = await createIntentBid(supabaseClient, req.body);
+    
+    if (result.error) {
+      console.error('❌ Intent bid creation failed:', result.error);
+      return res.status(400).json({ error: result.error });
+    }
+
+    console.log('✅ Intent bid created successfully');
+    res.json(result.result);
+  } catch (error) {
+    console.error('❌ Error creating intent bid:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/settle_intent_auction', async (req, res) => {
+  try {
+    const { launchId } = req.body;
+    
+    if (!launchId) {
+      return res.status(400).json({ error: 'Launch ID is required' });
+    }
+
+    console.log('🎯 Starting intent-based auction settlement for:', launchId);
+
+    const result = await settleIntentAuction(supabaseClient, launchId);
+    
+    if (result.error) {
+      console.error('❌ Intent auction settlement failed:', result.error);
+      return res.status(400).json({ error: result.error });
+    }
+
+    console.log('✅ Intent auction settled successfully');
+    res.json({ 
+      message: 'Intent-based auction settled successfully',
+      ...result.result,
+    });
+  } catch (error) {
+    console.error('❌ Error settling intent auction:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Token prices endpoint for frontend
+app.get('/token_prices', async (req, res) => {
+  try {
+    // Mock token prices for now - in production, fetch from 1inch price API
+    const mockPrices = {
+      '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 1.0,    // USDC
+      '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': 3200.0, // WETH
+      '0x912ce59144191c1204e64559fe8253a0e49e6548': 0.85,   // ARB
+      '0xf97f4df75117a78c1a5a0dbb814af92458539fb4': 14.50,  // LINK
+      '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9': 1.0,    // USDT
+    };
+    
+    res.json(mockPrices);
+  } catch (error) {
+    console.error('Error fetching token prices:', error);
+    res.status(500).json({ error: 'Failed to fetch token prices' });
+  }
+});
+
 app.post('/cancel_private_bid', async (req, res) => {
   try {
     const { bidId, userWallet } = req.body;
@@ -778,37 +991,329 @@ app.post('/settle_private_auction', async (req, res) => {
       return res.status(400).json({ error: 'Missing launchId parameter' });
     }
 
-    console.log('🚀 Settling private auction:', launchId);
+    console.log('🚀 Settling resolver fusion auction:', launchId);
 
-    // Step 1: Submit all pending bids to 1inch
-    const { error: submitError, result: submitResult } =
-      await submitPendingBidsTo1inch(supabaseClient, launchId);
-
-    if (submitError) {
-      console.error('❌ Error submitting pending bids:', submitError);
-      return res.status(500).json({ error: submitError });
-    }
-
-    // Step 2: Settle the auction using the resolver
-    const { error: settleError, result: settleResult } = await settleAuction(
+    // Use the new resolver fusion settlement process
+    const { error: settleError, result: settleResult } = await settleResolverFusionAuction(
       supabaseClient,
       launchId
     );
 
     if (settleError) {
-      console.error('❌ Error settling auction:', settleError);
+      console.error('❌ Error settling resolver fusion auction:', settleError);
       return res.status(500).json({ error: settleError });
     }
 
     res.json({
       success: true,
-      submittedBids: submitResult.submittedCount,
-      executedOrders: settleResult.executedOrders,
+      totalBids: settleResult.totalBids,
+      winningBids: settleResult.winningBids,
+      settledBids: settleResult.settledBids,
       clearingPrice: settleResult.clearingPrice,
-      message: `Private auction settled successfully. ${submitResult.submittedCount} bids submitted, ${settleResult.executedOrders} orders executed.`,
+      message: `Resolver fusion auction settled successfully. ${settleResult.settledBids} bids settled with clearing price ${settleResult.clearingPrice}.`,
     });
   } catch (error) {
     console.error('❌ Error in /settle_private_auction:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== DEBUGGING ENDPOINTS ==========
+
+// Check launch statuses  
+app.get('/debug/launches', async (req, res) => {
+  try {
+    const { data: launches, error } = await supabaseClient
+      .from('launches')
+      .select('id, token_name, token_symbol, status, is_launched, end_time, created_at')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw error;
+    
+    res.json(launches);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fix stuck auctions (manual override)
+app.post('/debug/fix_auction_status', async (req, res) => {
+  try {
+    const { launchId, newStatus } = req.body;
+    
+    const { error } = await supabaseClient
+      .from('launches')
+      .update({ 
+        status: newStatus,
+        is_launched: newStatus === 'completed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', launchId);
+    
+    if (error) throw error;
+    
+    res.json({ success: true, message: `Launch ${launchId} status updated to ${newStatus}` });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========== RESOLVER FUSION AUCTION ENDPOINTS ==========
+
+// Create fusion resolver bid
+app.post('/create_fusion_resolver_bid', async (req, res) => {
+  try {
+    const {
+      launchId,
+      bidder,
+      sourceToken,
+      sourceAmount,
+      auctionToken,
+      expectedAuctionTokens,
+      resolverAddress
+    } = req.body;
+
+    console.log('🎯 Creating Fusion resolver bid:', {
+      launchId,
+      bidder,
+      sourceToken,
+      sourceAmount,
+      auctionToken,
+      expectedAuctionTokens,
+      resolverAddress
+    });
+
+    // For now, create a simplified Fusion order structure
+    // In production, this would integrate with 1inch Fusion API
+    const salt = Math.floor(Math.random() * 1000000);
+    const orderHash = `0x${Buffer.from(`${bidder}-${sourceToken}-${sourceAmount}-${salt}`).toString('hex').slice(0, 64)}`;
+    
+    const fusionOrder = {
+      domain: {
+        name: '1inch Limit Order Protocol',
+        version: '4',
+        chainId: 42161,
+        verifyingContract: '0x1111111254EEB25477B68fb85Ed929f73A960582'
+      },
+      types: {
+        Order: [
+          { name: 'salt', type: 'uint256' },
+          { name: 'maker', type: 'address' },
+          { name: 'receiver', type: 'address' },
+          { name: 'makerAsset', type: 'address' },
+          { name: 'takerAsset', type: 'address' },
+          { name: 'makingAmount', type: 'uint256' },
+          { name: 'takingAmount', type: 'uint256' },
+          { name: 'makerTraits', type: 'uint256' }
+        ]
+      },
+      message: {
+        salt: salt.toString(),
+        maker: bidder,
+        receiver: resolverAddress, // KEY: Resolver gets the USDC
+        makerAsset: sourceToken,
+        takerAsset: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', // USDC
+        makingAmount: sourceAmount,
+        takingAmount: Math.floor(parseFloat(sourceAmount) * 0.98).toString(), // 2% slippage
+        makerTraits: '0'
+      }
+    };
+
+    res.json({
+      fusionOrder,
+      orderHash,
+      message: 'Fusion order created successfully'
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating fusion resolver bid:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Submit signed fusion resolver bid
+app.post('/submit_fusion_resolver_bid', async (req, res) => {
+  try {
+    console.log('📥 Received bid submission request:', JSON.stringify(req.body, null, 2));
+    
+    const {
+      launchId,
+      bidder,
+      sourceToken,
+      sourceAmount,
+      auctionToken,
+      targetPricePerToken,
+      expectedAuctionTokens,
+      fusionOrder,
+      orderHash,
+      signature,
+      resolverAddress
+    } = req.body;
+
+    console.log('📝 Submitting signed Fusion resolver bid:', {
+      launchId,
+      bidder,
+      sourceToken,
+      sourceAmount,
+      auctionToken,
+      targetPricePerToken,
+      expectedAuctionTokens,
+      orderHash,
+      signature: signature.slice(0, 20) + '...',
+      resolverAddress
+    });
+
+    console.log('🔄 Mapping parameters for createResolverFusionBid...');
+    
+    const mappedData = {
+      launchId,
+      userWallet: bidder,
+      bidTokenAddress: sourceToken,
+      bidTokenAmount: sourceAmount,
+      bidTokenSymbol: getTokenSymbol(sourceToken), // Get actual token symbol
+      auctionTokenAddress: auctionToken,
+      maxAuctionTokens: expectedAuctionTokens,
+      maxEffectivePriceUSDC: targetPricePerToken || '0',
+      fusionOrder,
+      fusionSignature: signature,
+      resolverAddress
+    };
+    
+    console.log('🗂️ Mapped data:', JSON.stringify(mappedData, null, 2));
+    
+    const result = await createResolverFusionBid(supabaseClient, mappedData);
+
+    if (result.error) {
+      console.error('❌ Error storing resolver fusion bid:', result.error);
+      return res.status(400).json({ error: result.error });
+    }
+
+    console.log('✅ Resolver fusion bid stored successfully');
+    res.json({
+      message: 'Resolver fusion bid submitted successfully',
+      bidId: result.result.bidId
+    });
+
+  } catch (error) {
+    console.error('❌ Error submitting resolver fusion bid:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Token prices endpoint (POST variant for frontend)
+app.post('/token_prices', async (req, res) => {
+  try {
+    const { tokenAddress, amount } = req.body;
+    
+    console.log('💰 Price request for:', { tokenAddress, amount });
+    
+    if (!tokenAddress || !amount) {
+      return res.status(400).json({ error: 'Missing tokenAddress or amount' });
+    }
+
+    const normalizedAddress = tokenAddress.toLowerCase();
+    const USDC_ADDRESS = '0xaf88d065e77c8cc2239327c5edb3a432268e5831';
+    
+    // If requesting USDC price, return 1:1
+    if (normalizedAddress === USDC_ADDRESS) {
+      const usdcValue = parseFloat(amount).toFixed(2);
+      return res.json({
+        tokenAddress: normalizedAddress,
+        amount,
+        pricePerToken: 1.0,
+        usdcValue
+      });
+    }
+
+    try {
+      // Use 1inch price API for real prices
+      const priceUrl = `https://api.1inch.dev/price/v1.1/${fromChainId}/${normalizedAddress}?currency=USD`;
+      
+      console.log('🔍 Fetching price from 1inch:', priceUrl);
+      
+      const priceResponse = await fetch(priceUrl, {
+        headers: {
+          'Authorization': `Bearer ${API_KEY}`,
+          'Accept': 'application/json',
+        },
+      });
+
+      if (priceResponse.ok) {
+        const priceData = await priceResponse.json();
+        console.log('📊 1inch price data:', priceData);
+        
+        const pricePerToken = parseFloat(priceData[normalizedAddress] || 0);
+        const usdcValue = (parseFloat(amount) * pricePerToken).toFixed(2);
+        
+        return res.json({
+          tokenAddress: normalizedAddress,
+          amount,
+          pricePerToken,
+          usdcValue,
+          source: '1inch_api'
+        });
+      } else {
+        console.warn('⚠️ 1inch API failed, falling back to mock prices');
+        // Fall back to mock prices if 1inch API fails
+      }
+    } catch (apiError) {
+      console.warn('⚠️ 1inch API error, falling back to mock:', apiError.message);
+    }
+
+    // Fallback mock prices for testing
+    const mockPrices = {
+      '0xaf88d065e77c8cc2239327c5edb3a432268e5831': 1.0,    // USDC
+      '0x82af49447d8a07e3bd95bd0d56f35241523fbab1': 3200.0, // WETH
+      '0x912ce59144191c1204e64559fe8253a0e49e6548': 0.85,   // ARB
+      '0xf97f4df75117a78c1a5a0dbb814af92458539fb4': 14.50,  // LINK
+      '0xfa7f8980b0f1e64a2062791cc3b0871572f1f7f0': 8.5,    // UNI
+    };
+    
+    const pricePerToken = mockPrices[normalizedAddress] || 0;
+    const usdcValue = (parseFloat(amount) * pricePerToken).toFixed(2);
+    
+    console.log('💰 Calculated price:', { pricePerToken, usdcValue, source: 'mock' });
+    
+    res.json({
+      tokenAddress: normalizedAddress,
+      amount,
+      pricePerToken,
+      usdcValue,
+      source: 'mock_fallback'
+    });
+
+  } catch (error) {
+    console.error('❌ Error calculating token price:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Settle resolver fusion auction
+app.post('/settle_fusion_resolver_auction', async (req, res) => {
+  try {
+    const { launchId } = req.body;
+
+    if (!launchId) {
+      return res.status(400).json({ error: 'Missing launchId parameter' });
+    }
+
+    console.log('🚀 Settling resolver fusion auction:', launchId);
+
+    const result = await settleResolverFusionAuction(supabaseClient, launchId);
+
+    if (result.error) {
+      console.error('❌ Resolver fusion auction settlement failed:', result.error);
+      return res.status(400).json({ error: result.error });
+    }
+
+    console.log('✅ Resolver fusion auction settled successfully');
+    res.json({
+      message: 'Resolver fusion auction settled successfully',
+      ...result.result
+    });
+
+  } catch (error) {
+    console.error('❌ Error settling resolver fusion auction:', error);
     res.status(500).json({ error: error.message });
   }
 });
